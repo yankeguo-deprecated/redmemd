@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/go-redis/redis/v8"
 	"io"
 	"log"
 	"net"
@@ -88,6 +89,26 @@ func handleConn(ctx context.Context, wg *sync.WaitGroup, conn *net.TCPConn) {
 
 	log.Println("connected:", conn.RemoteAddr().String())
 	defer log.Println("disconnected:", conn.RemoteAddr().String())
+
+	var err error
+	defer func(err *error) {
+		if *err != nil {
+			log.Println("failed:", conn.RemoteAddr().String(), (*err).Error())
+		}
+	}(&err)
+
+	var opts *redis.Options
+
+	if opts, err = redis.ParseURL(optRedisURL); err != nil {
+		return
+	}
+
+	client := redis.NewClient(opts)
+	defer client.Close()
+
+	if err = client.Ping(ctx).Err(); err != nil {
+		return
+	}
 
 	go io.Copy(io.Discard, conn)
 
