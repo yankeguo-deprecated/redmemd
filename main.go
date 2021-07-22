@@ -1,22 +1,24 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"github.com/go-redis/redis/v8"
-	"io"
+	"go.guoyk.net/redmemd/memwire"
 	"log"
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 )
 
 var (
-	optPort        = os.Getenv("PORT")
-	optRedisURL    = os.Getenv("REDIS_URL")
-	optRedisPrefix = os.Getenv("REDIS_PREFIX")
+	optPort        = strings.TrimSpace(os.Getenv("PORT"))
+	optRedisURL    = strings.TrimSpace(os.Getenv("REDIS_URL"))
+	optRedisPrefix = strings.TrimSpace(os.Getenv("REDIS_PREFIX"))
 )
 
 func main() {
@@ -110,18 +112,43 @@ func handleConn(ctx context.Context, wg *sync.WaitGroup, conn *net.TCPConn) {
 		return
 	}
 
-	go io.Copy(io.Discard, conn)
+	r := bufio.NewReaderSize(conn, 4096)
+	w := bufio.NewWriterSize(conn, 4096)
 
-	tk := time.Tick(time.Second)
+	go func() {
+		<-ctx.Done()
+		time.Sleep(time.Second)
+		conn.Close()
+	}()
 
-forLoop:
 	for {
-		select {
-		case t := <-tk:
-			conn.Write([]byte(t.String() + "\n"))
-		case <-ctx.Done():
-			conn.Write([]byte("QUIT\n"))
-			break forLoop
+		var req *memwire.Request
+		if req, err = memwire.ReadRequest(r); err != nil {
+			if perr, ok := err.(memwire.Error); ok {
+				res := &memwire.Response{}
+				res.Response = memwire.CodeClientErr + perr.Description
+				w.WriteString(res.String())
+				w.Flush()
+				continue
+			} else {
+				return
+			}
+		}
+		if ctx.Err() != nil {
+			res := &memwire.Response{}
+			res.Response = memwire.CodeServerErr + "shutting down"
+			w.WriteString(res.String())
+			w.Flush()
+			return
+		}
+		switch req.Command {
+		//TODO: complete
+		default:
+			res := &memwire.Response{}
+			res.Response = memwire.CodeClientErr + req.Command + " not implemented"
+			w.WriteString(res.String())
+			w.Flush()
+			continue
 		}
 	}
 

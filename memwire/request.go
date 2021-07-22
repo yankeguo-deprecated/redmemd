@@ -36,7 +36,7 @@ type Error struct {
 }
 
 func (e Error) Error() string {
-	return fmt.Sprintf("MC Protocol error: %s", e.Description)
+	return fmt.Sprintf("memwire error: %s", e.Description)
 }
 
 // NewError creates a new error.
@@ -45,7 +45,7 @@ func NewError(description string) Error {
 }
 
 // ReadRequest reads a request from reader
-func ReadRequest(r *bufio.Reader) (req *Request, err error) {
+func ReadRequest(r *bufio.Reader) (*Request, error) {
 	lineBytes, _, err := r.ReadLine()
 	if err != nil {
 		return nil, err
