@@ -287,6 +287,7 @@ rxLoop:
 			}
 		case "touch":
 			err1 := client.Expire(ctx, calculateRedisKey(req.Key), time.Second*time.Duration(req.Exptime)).Err()
+			_ = client.Expire(ctx, calculateRedisFlagsKey(req.Key), time.Second*time.Duration(req.Exptime))
 			if err1 != nil {
 				if err1 == redis.Nil {
 					if !req.Noreply {
