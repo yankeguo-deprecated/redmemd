@@ -250,10 +250,18 @@ func (rt *RoundTripper) Do(ctx context.Context) error {
 		}
 		return rt.ReplyCode(memwire.CodeStored)
 	case "touch":
-		if err := rt.Client.Expire(ctx, rt.CalculateKey(rt.Key), rt.CalculateExpires()).Err(); err != nil {
+		if err := rt.Client.Expire(
+			ctx,
+			rt.CalculateKey(rt.Key),
+			rt.CalculateExpires(),
+		).Err(); err != nil {
 			return rt.ReplyError(err)
 		}
-		if err := rt.Client.Expire(ctx, rt.CalculateFlagsKey(rt.Key), rt.CalculateExpires()).Err(); err != nil {
+		if err := rt.Client.Expire(
+			ctx,
+			rt.CalculateFlagsKey(rt.Key),
+			rt.CalculateExpires(),
+		).Err(); err != nil {
 			if err != redis.Nil {
 				return rt.ReplyError(err)
 			}
