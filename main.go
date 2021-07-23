@@ -5,10 +5,12 @@ import (
 	"context"
 	"github.com/go-redis/redis/v8"
 	"go.guoyk.net/redmemd/memwire"
+	"io"
 	"log"
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -19,6 +21,7 @@ var (
 	optPort        = strings.TrimSpace(os.Getenv("PORT"))
 	optRedisURL    = strings.TrimSpace(os.Getenv("REDIS_URL"))
 	optRedisPrefix = strings.TrimSpace(os.Getenv("REDIS_PREFIX"))
+	optDebug, _    = strconv.ParseBool(os.Getenv("DEBUG"))
 )
 
 func main() {
@@ -133,8 +136,11 @@ func handleConn(ctx context.Context, wg *sync.WaitGroup, conn *net.TCPConn) {
 	for {
 		var req *memwire.Request
 		if req, err = memwire.ReadRequest(r); err != nil {
-			if perr, ok := err.(memwire.Error); ok {
-				if _, err = w.WriteString(memwire.CodeClientErr + " " + perr.Description + "\r\n"); err != nil {
+			if optDebug {
+				log.Println("error:", conn.RemoteAddr().String(), err.Error())
+			}
+			if _, ok := err.(memwire.Error); ok {
+				if _, err = w.WriteString(memwire.CodeErr + "\r\n"); err != nil {
 					return
 				}
 				if err = w.Flush(); err != nil {
@@ -157,12 +163,16 @@ func handleConn(ctx context.Context, wg *sync.WaitGroup, conn *net.TCPConn) {
 		}
 
 		rt := &RoundTripper{
-			Prefix:         optRedisPrefix,
-			Client:         client,
 			Request:        req,
+			Prefix:         optRedisPrefix,
+			Debug:          optDebug,
+			Client:         client,
 			ResponseWriter: w,
 		}
 		if err = rt.Do(ctx); err != nil {
+			if err == io.EOF {
+				err = nil
+			}
 			return
 		}
 	}

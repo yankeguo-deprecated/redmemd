@@ -10,7 +10,7 @@
 
 ```shell
 # 设置监听端口
-export PORT=11300
+export PORT=11211
 # 设置 Redis 地址
 export REDIS_URL=redis://127.0.0.1:6379/0
 # 设置自定义 Redis 键值前缀

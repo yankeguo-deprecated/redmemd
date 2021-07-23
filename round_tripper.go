@@ -5,6 +5,8 @@ import (
 	"context"
 	"github.com/go-redis/redis/v8"
 	"go.guoyk.net/redmemd/memwire"
+	"io"
+	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 
 type RoundTripper struct {
 	*memwire.Request
+	Debug          bool
 	Prefix         string
 	Client         *redis.Client
 	ResponseWriter *bufio.Writer
@@ -31,7 +34,13 @@ func (rt *RoundTripper) CalculateFlagsKey(key string) string {
 
 func (rt *RoundTripper) Reply(res *memwire.Response) (err error) {
 	if rt.Noreply {
+		if rt.Debug {
+			log.Println("[debug] noreply")
+		}
 		return
+	}
+	if rt.Debug {
+		log.Println("[debug] reply:", res.Response, res.Values)
 	}
 	if _, err = rt.ResponseWriter.WriteString(res.String()); err != nil {
 		return
@@ -59,6 +68,9 @@ func (rt *RoundTripper) ReplyError(err error) error {
 }
 
 func (rt *RoundTripper) Do(ctx context.Context) error {
+	if rt.Debug {
+		log.Println("[debug] request:", rt.Command, rt.Key, strings.Join(rt.Keys, ","), rt.Exptime)
+	}
 	switch rt.Command {
 	case "get":
 		res := &memwire.Response{}
@@ -269,6 +281,8 @@ func (rt *RoundTripper) Do(ctx context.Context) error {
 		return rt.ReplyCode(memwire.CodeTouched)
 	case "version":
 		return rt.ReplyCode("VERSION", "1")
+	case "quit":
+		return io.EOF
 	default:
 		// force send response
 		rt.Noreply = false
