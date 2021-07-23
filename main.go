@@ -3,10 +3,12 @@ package main
 import (
 	"bufio"
 	"context"
+	"github.com/bsm/redislock"
 	"github.com/go-redis/redis/v8"
 	"go.guoyk.net/redmemd/memwire"
 	"io"
 	"log"
+	"math/rand"
 	"net"
 	"os"
 	"os/signal"
@@ -18,10 +20,9 @@ import (
 )
 
 var (
-	optPort        = strings.TrimSpace(os.Getenv("PORT"))
-	optRedisURL    = strings.TrimSpace(os.Getenv("REDIS_URL"))
-	optRedisPrefix = strings.TrimSpace(os.Getenv("REDIS_PREFIX"))
-	optDebug, _    = strconv.ParseBool(os.Getenv("DEBUG"))
+	optPort     = strings.TrimSpace(os.Getenv("PORT"))
+	optRedisURL = strings.TrimSpace(os.Getenv("REDIS_URL"))
+	optDebug, _ = strconv.ParseBool(os.Getenv("DEBUG"))
 )
 
 func main() {
@@ -34,6 +35,8 @@ func main() {
 			log.Println("exited")
 		}
 	}(&err)
+
+	rand.Seed(time.Now().UnixNano())
 
 	if optPort == "" {
 		optPort = "11211"
@@ -123,6 +126,8 @@ func handleConn(ctx context.Context, wg *sync.WaitGroup, conn *net.TCPConn) {
 	client := redis.NewClient(opts)
 	defer client.Close()
 
+	rlock := redislock.New(client)
+
 	if err = client.Ping(ctx).Err(); err != nil {
 		return
 	}
@@ -170,9 +175,9 @@ func handleConn(ctx context.Context, wg *sync.WaitGroup, conn *net.TCPConn) {
 
 		rt := &RoundTripper{
 			Request:        req,
-			Prefix:         optRedisPrefix,
 			Debug:          optDebug,
-			Client:         client,
+			Redis:          client,
+			RedisLock:      rlock,
 			ResponseWriter: w,
 		}
 		if err = rt.Do(ctx); err != nil {

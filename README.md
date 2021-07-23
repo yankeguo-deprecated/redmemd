@@ -4,7 +4,7 @@
 
 ## 依赖
 
-* `redis` > 6.0，因为需要 keepttl 功能
+* `redis` > 4
 
 ## 启动
 
@@ -13,8 +13,6 @@
 export PORT=11211
 # 设置 Redis 地址
 export REDIS_URL=redis://127.0.0.1:6379/0
-# 设置自定义 Redis 键值前缀
-export REDIS_PREFIX=myredmemd.
 # 启动
 ./redmemed
 ```
@@ -22,16 +20,15 @@ export REDIS_PREFIX=myredmemd.
 ## 支持的命令
 
 * `version`
-* `set`, `add`, `replace`, `get`
-* `append`, `prepend`
-* `incr`, `decr`
+* `get`
+* `set`, `cas`, `add`, `replace`
+* `append`, `prepend`, `incr`, `decr`
 * `delete`, `touch`
 
 其中
 
 * 所有命令支持 `flags` 存取
-* 命令 `add`, `replace` `append`, `prepend`, `incr`, `decr` 为原子性操作
-* 不支持 `cas`
+* 所有命令支持原子化操作
 
 ## 致谢
 
