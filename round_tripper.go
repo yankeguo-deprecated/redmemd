@@ -48,16 +48,19 @@ func (rt *RoundTripper) ReplyCode(code ...string) error {
 	})
 }
 
-func (rt *RoundTripper) ReplyServerError(err error) error {
+func (rt *RoundTripper) ReplyError(err error) error {
 	if err == redis.Nil {
 		return rt.ReplyCode(memwire.CodeNotFound)
+	}
+	if strings.Contains(err.Error(), "is not an integer or out of range") {
+		return rt.ReplyCode(memwire.CodeClientErr, err.Error())
 	}
 	return rt.ReplyCode(memwire.CodeServerErr, err.Error())
 }
 
 func (rt *RoundTripper) Do(ctx context.Context) error {
 	switch rt.Command {
-	case "get", "gets":
+	case "get":
 		res := &memwire.Response{}
 		for _, key := range rt.Keys {
 			var (
@@ -69,14 +72,14 @@ func (rt *RoundTripper) Do(ctx context.Context) error {
 				if err == redis.Nil {
 					continue
 				} else {
-					return rt.ReplyServerError(err)
+					return rt.ReplyError(err)
 				}
 			}
 			if flags, err = rt.Client.Get(ctx, rt.CalculateFlagsKey(key)).Result(); err != nil {
 				if err == redis.Nil {
 					flags = "0"
 				} else {
-					return rt.ReplyServerError(err)
+					return rt.ReplyError(err)
 				}
 			}
 			res.Values = append(res.Values, memwire.Value{
@@ -90,9 +93,15 @@ func (rt *RoundTripper) Do(ctx context.Context) error {
 	case "delete":
 		var count int
 		for _, key := range rt.Keys {
-			err := rt.Client.Del(ctx, rt.CalculateKey(key), rt.CalculateFlagsKey(key)).Err()
-			if err != nil && err != redis.Nil {
-				return rt.ReplyServerError(err)
+			err := rt.Client.Del(
+				ctx,
+				rt.CalculateKey(key),
+				rt.CalculateFlagsKey(key),
+			).Err()
+			if err != nil {
+				if err != redis.Nil {
+					return rt.ReplyError(err)
+				}
 			} else {
 				count++
 			}
@@ -103,11 +112,21 @@ func (rt *RoundTripper) Do(ctx context.Context) error {
 			return rt.ReplyCode(memwire.CodeDeleted)
 		}
 	case "set":
-		if err := rt.Client.Set(ctx, rt.CalculateKey(rt.Key), string(rt.Data), rt.CalculateExpires()).Err(); err != nil {
-			return rt.ReplyServerError(err)
+		if err := rt.Client.Set(
+			ctx,
+			rt.CalculateKey(rt.Key),
+			string(rt.Data),
+			rt.CalculateExpires(),
+		).Err(); err != nil {
+			return rt.ReplyError(err)
 		}
-		if err := rt.Client.Set(ctx, rt.CalculateFlagsKey(rt.Key), rt.Flags, rt.CalculateExpires()).Err(); err != nil {
-			return rt.ReplyServerError(err)
+		if err := rt.Client.Set(
+			ctx,
+			rt.CalculateFlagsKey(rt.Key),
+			rt.Flags,
+			rt.CalculateExpires(),
+		).Err(); err != nil {
+			return rt.ReplyError(err)
 		}
 		return rt.ReplyCode(memwire.CodeStored)
 	case "incr", "decr":
@@ -116,29 +135,48 @@ func (rt *RoundTripper) Do(ctx context.Context) error {
 			val int64
 		)
 		if rt.Command == "incr" {
-			val, err = rt.Client.IncrBy(ctx, rt.CalculateKey(rt.Key), rt.Value).Result()
+			val, err = rt.Client.IncrBy(
+				ctx,
+				rt.CalculateKey(rt.Key),
+				rt.Value,
+			).Result()
 		} else {
-			val, err = rt.Client.DecrBy(ctx, rt.CalculateKey(rt.Key), rt.Value).Result()
+			val, err = rt.Client.DecrBy(
+				ctx,
+				rt.CalculateKey(rt.Key),
+				rt.Value,
+			).Result()
 		}
 		if err != nil {
-			return rt.ReplyServerError(err)
+			return rt.ReplyError(err)
 		} else {
 			return rt.ReplyCode(strconv.FormatInt(val, 10))
 		}
 	case "append":
-		if err := rt.Client.Append(ctx, rt.CalculateKey(rt.Key), string(rt.Data)).Err(); err != nil {
-			return rt.ReplyServerError(err)
+		if err := rt.Client.Append(
+			ctx,
+			rt.CalculateKey(rt.Key),
+			string(rt.Data),
+		).Err(); err != nil {
+			return rt.ReplyError(err)
 		}
 		return rt.ReplyCode(memwire.CodeStored)
 	case "prepend":
 		if err := rt.Client.Watch(ctx, func(tx *redis.Tx) error {
 			if _, err := tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
-				var err error
-				var val string
+				var (
+					err error
+					val string
+				)
 				if val, err = p.Get(ctx, rt.CalculateKey(rt.Key)).Result(); err != nil {
 					return err
 				}
-				if err = p.Set(ctx, rt.CalculateKey(rt.Key), string(rt.Data)+val, redis.KeepTTL).Err(); err != nil {
+				if err = p.Set(
+					ctx,
+					rt.CalculateKey(rt.Key),
+					string(rt.Data)+val,
+					redis.KeepTTL,
+				).Err(); err != nil {
 					return err
 				}
 				return nil
@@ -147,7 +185,7 @@ func (rt *RoundTripper) Do(ctx context.Context) error {
 			}
 			return nil
 		}, rt.CalculateKey(rt.Key)); err != nil {
-			return rt.ReplyServerError(err)
+			return rt.ReplyError(err)
 		}
 		return rt.ReplyCode(memwire.CodeStored)
 	case `add`:
@@ -155,12 +193,22 @@ func (rt *RoundTripper) Do(ctx context.Context) error {
 			err    error
 			stored bool
 		)
-		if stored, err = rt.Client.SetNX(ctx, rt.CalculateKey(rt.Key), string(rt.Data), rt.CalculateExpires()).Result(); err != nil {
-			return rt.ReplyServerError(err)
+		if stored, err = rt.Client.SetNX(
+			ctx,
+			rt.CalculateKey(rt.Key),
+			string(rt.Data),
+			rt.CalculateExpires(),
+		).Result(); err != nil {
+			return rt.ReplyError(err)
 		}
 		if stored {
-			if err = rt.Client.Set(ctx, rt.CalculateFlagsKey(rt.Key), rt.Flags, rt.CalculateExpires()).Err(); err != nil {
-				return rt.ReplyServerError(err)
+			if err = rt.Client.Set(
+				ctx,
+				rt.CalculateFlagsKey(rt.Key),
+				rt.Flags,
+				rt.CalculateExpires(),
+			).Err(); err != nil {
+				return rt.ReplyError(err)
 			}
 			return rt.ReplyCode(memwire.CodeStored)
 		} else {
@@ -173,10 +221,20 @@ func (rt *RoundTripper) Do(ctx context.Context) error {
 				if err = p.Get(ctx, rt.CalculateKey(rt.Key)).Err(); err != nil {
 					return err
 				}
-				if err = p.Set(ctx, rt.CalculateKey(rt.Key), string(rt.Data), rt.CalculateExpires()).Err(); err != nil {
+				if err = p.Set(
+					ctx,
+					rt.CalculateKey(rt.Key),
+					string(rt.Data),
+					redis.KeepTTL,
+				).Err(); err != nil {
 					return err
 				}
-				if err = p.Set(ctx, rt.CalculateFlagsKey(rt.Key), rt.Flags, rt.CalculateExpires()).Err(); err != nil {
+				if err = p.Set(
+					ctx,
+					rt.CalculateFlagsKey(rt.Key),
+					rt.Flags,
+					redis.KeepTTL,
+				).Err(); err != nil {
 					return err
 				}
 				return nil
@@ -188,16 +246,16 @@ func (rt *RoundTripper) Do(ctx context.Context) error {
 			if err == redis.Nil {
 				return rt.ReplyCode(memwire.CodeNotStored)
 			}
-			return rt.ReplyServerError(err)
+			return rt.ReplyError(err)
 		}
 		return rt.ReplyCode(memwire.CodeStored)
 	case "touch":
 		if err := rt.Client.Expire(ctx, rt.CalculateKey(rt.Key), rt.CalculateExpires()).Err(); err != nil {
-			return rt.ReplyServerError(err)
+			return rt.ReplyError(err)
 		}
 		if err := rt.Client.Expire(ctx, rt.CalculateFlagsKey(rt.Key), rt.CalculateExpires()).Err(); err != nil {
 			if err != redis.Nil {
-				return rt.ReplyServerError(err)
+				return rt.ReplyError(err)
 			}
 		}
 		return rt.ReplyCode(memwire.CodeTouched)

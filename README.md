@@ -8,13 +8,17 @@
 
 ## 支持的命令
 
-支持 `flags`，支持原子性操作
-
 * `version`
-* `set`, `add`, `replace`, `get`, `gets`
+* `set`, `add`, `replace`, `get`
 * `append`, `prepend`
 * `incr`, `decr`
 * `delete`, `touch`
+
+其中
+
+* 所有命令支持 `flags` 存取
+* 命令 `add`, `replace` `append`, `prepend`, `incr`, `decr` 为原子性操作
+* 不支持 `cas`
 
 ## 致谢
 
