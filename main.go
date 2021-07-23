@@ -21,14 +21,6 @@ var (
 	optRedisPrefix = strings.TrimSpace(os.Getenv("REDIS_PREFIX"))
 )
 
-func calculateRedisKey(key string) string {
-	return optRedisPrefix + key
-}
-
-func calculateRedisFlagsKey(key string) string {
-	return optRedisPrefix + "__FLAGS." + key
-}
-
 func main() {
 	var err error
 	defer func(err *error) {

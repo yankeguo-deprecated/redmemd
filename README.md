@@ -13,6 +13,8 @@
 export PORT=11300
 # 设置 Redis 地址
 export REDIS_URL=redis://127.0.0.1:6379/0
+# 设置自定义 Redis 键值前缀
+export REDIS_PREFIX=myredmemd.
 # 启动
 ./redmemed
 ```
