@@ -106,8 +106,11 @@ func handleConn(ctx context.Context, wg *sync.WaitGroup, conn *net.TCPConn) {
 
 	var err error
 	defer func(err *error) {
+		if *err == io.EOF {
+			*err = nil
+		}
 		if *err != nil {
-			log.Println("failed:", conn.RemoteAddr().String(), (*err).Error())
+			log.Println("error:", conn.RemoteAddr().String(), (*err).Error())
 		}
 	}(&err)
 
@@ -136,8 +139,11 @@ func handleConn(ctx context.Context, wg *sync.WaitGroup, conn *net.TCPConn) {
 	for {
 		var req *memwire.Request
 		if req, err = memwire.ReadRequest(r); err != nil {
+			if err == io.EOF {
+				return
+			}
 			if optDebug {
-				log.Println("error:", conn.RemoteAddr().String(), err.Error())
+				log.Println("[debug] read error:", conn.RemoteAddr().String(), err.Error())
 			}
 			if _, ok := err.(memwire.Error); ok {
 				if _, err = w.WriteString(memwire.CodeErr + "\r\n"); err != nil {
@@ -170,9 +176,6 @@ func handleConn(ctx context.Context, wg *sync.WaitGroup, conn *net.TCPConn) {
 			ResponseWriter: w,
 		}
 		if err = rt.Do(ctx); err != nil {
-			if err == io.EOF {
-				err = nil
-			}
 			return
 		}
 	}
