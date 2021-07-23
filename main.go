@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -130,193 +129,40 @@ func handleConn(ctx context.Context, wg *sync.WaitGroup, conn *net.TCPConn) {
 		_ = conn.Close()
 	}()
 
-	sendResp := func(res *memwire.Response) (err error) {
-		if _, err = w.WriteString(res.String()); err != nil {
-			return
-		}
-		if err = w.Flush(); err != nil {
-			return
-		}
-		return
-	}
-
-	sendCode := func(code string) error {
-		return sendResp(&memwire.Response{
-			Response: code,
-		})
-	}
-
-rxLoop:
 	for {
 		var req *memwire.Request
 		if req, err = memwire.ReadRequest(r); err != nil {
 			if perr, ok := err.(memwire.Error); ok {
-				if err = sendCode(memwire.CodeClientErr + perr.Description); err != nil {
+				if _, err = w.WriteString(memwire.CodeClientErr + " " + perr.Description + "\r\n"); err != nil {
 					return
 				}
-				continue rxLoop
+				if err = w.Flush(); err != nil {
+					return
+				}
+				continue
 			} else {
 				return
 			}
 		}
 
 		if ctx.Err() != nil {
-			_ = sendCode(memwire.CodeServerErr + "shutting down")
+			if _, err = w.WriteString(memwire.CodeServerErr + " shutting down\r\n"); err != nil {
+				return
+			}
+			if err = w.Flush(); err != nil {
+				return
+			}
 			return
 		}
 
-		switch req.Command {
-		case "get", "gets":
-			res := &memwire.Response{}
-			for _, key := range req.Keys {
-				val, err1 := client.Get(ctx, calculateRedisKey(key)).Result()
-				if err1 != nil {
-					if err1 == redis.Nil {
-						continue
-					} else {
-						if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
-							return
-						}
-						continue rxLoop
-					}
-				}
-				flags, err2 := client.Get(ctx, calculateRedisFlagsKey(key)).Result()
-				if err2 != nil {
-					if err2 == redis.Nil {
-						flags = "0"
-					} else {
-						if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
-							return
-						}
-						continue rxLoop
-					}
-				}
-				res.Values = append(res.Values, memwire.Value{
-					Key:   key,
-					Flags: flags,
-					Data:  []byte(val),
-				})
-			}
-			res.Response = memwire.CodeEnd
-			if err = sendResp(res); err != nil {
-				return
-			}
-		case "delete":
-			var count int
-			for _, key := range req.Keys {
-				err1 := client.Del(ctx, calculateRedisKey(key)).Err()
-				_ = client.Del(ctx, calculateRedisFlagsKey(key)).Err()
-				if err1 != nil {
-					if err1 == redis.Nil {
-					} else {
-						if !req.Noreply {
-							if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
-								return
-							}
-						}
-						continue rxLoop
-					}
-				} else {
-					count++
-				}
-			}
-			if !req.Noreply {
-				if count == 0 {
-					if err = sendCode(memwire.CodeNotFound); err != nil {
-						return
-					}
-				} else {
-					if err = sendCode(memwire.CodeDeleted); err != nil {
-						return
-					}
-				}
-			}
-		case "set":
-			err1 := client.Set(ctx, calculateRedisKey(req.Key), string(req.Data), time.Second*time.Duration(req.Exptime)).Err()
-			if err1 != nil {
-				if !req.Noreply {
-					if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
-						return
-					}
-					continue rxLoop
-				}
-			}
-			err2 := client.Set(ctx, calculateRedisFlagsKey(req.Key), req.Flags, time.Second*time.Duration(req.Exptime)).Err()
-			if err2 != nil {
-				if !req.Noreply {
-					if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
-						return
-					}
-					continue rxLoop
-				}
-			}
-			if !req.Noreply {
-				if err = sendCode(memwire.CodeStored); err != nil {
-					return
-				}
-			}
-		case "incr":
-			val, err1 := client.IncrBy(ctx, calculateRedisKey(req.Key), req.Value).Result()
-			if err1 != nil {
-				if !req.Noreply {
-					if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
-						return
-					}
-				}
-				continue rxLoop
-			}
-			if !req.Noreply {
-				if err = sendCode(strconv.FormatInt(val, 10)); err != nil {
-					return
-				}
-			}
-		case "decr":
-			val, err1 := client.DecrBy(ctx, calculateRedisKey(req.Key), req.Value).Result()
-			if err1 != nil {
-				if !req.Noreply {
-					if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
-						return
-					}
-				}
-				continue rxLoop
-			}
-			if !req.Noreply {
-				if err = sendCode(strconv.FormatInt(val, 10)); err != nil {
-					return
-				}
-			}
-		case "touch":
-			err1 := client.Expire(ctx, calculateRedisKey(req.Key), time.Second*time.Duration(req.Exptime)).Err()
-			_ = client.Expire(ctx, calculateRedisFlagsKey(req.Key), time.Second*time.Duration(req.Exptime))
-			if err1 != nil {
-				if err1 == redis.Nil {
-					if !req.Noreply {
-						if err = sendCode(memwire.CodeNotFound); err != nil {
-							return
-						}
-					}
-				} else {
-					if !req.Noreply {
-						if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
-							return
-						}
-					}
-				}
-			} else {
-				if err = sendCode(memwire.CodeTouched); err != nil {
-					return
-				}
-			}
-		case "version":
-			if err = sendCode("VERSION 1"); err != nil {
-				return
-			}
-		default:
-			if err = sendCode(memwire.CodeErr + req.Command + " not implemented"); err != nil {
-				return
-			}
-			continue
+		rt := &RoundTripper{
+			Prefix:         optRedisPrefix,
+			Client:         client,
+			Request:        req,
+			ResponseWriter: w,
+		}
+		if err = rt.Do(ctx); err != nil {
+			return
 		}
 	}
-
 }
