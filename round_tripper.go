@@ -16,8 +16,9 @@ import (
 )
 
 var (
-	ErrNotStored = errors.New("not stored")
-	ErrExists    = errors.New("exists")
+	ErrNotStored       = errors.New("not stored")
+	ErrExists          = errors.New("exists")
+	ErrNotFound  error = redis.Nil
 )
 
 const (
@@ -66,11 +67,8 @@ func (rt *RoundTripper) ReplyError(err error) error {
 	if err == ErrNotStored {
 		return rt.ReplyCode(memwire.CodeNotStored)
 	}
-	if err == redis.Nil {
+	if err == ErrNotFound {
 		return rt.ReplyCode(memwire.CodeNotFound)
-	}
-	if strings.Contains(err.Error(), "is not an integer or out of range") {
-		return rt.ReplyCode(memwire.CodeClientErr, err.Error())
 	}
 	return rt.ReplyCode(memwire.CodeServerErr, err.Error())
 }
@@ -107,7 +105,7 @@ func (rt *RoundTripper) Do(ctx context.Context) error {
 							return ErrNotStored
 						}
 					} else {
-						return rt.ReplyError(err)
+						return err
 					}
 				} else {
 					switch rt.Command {
