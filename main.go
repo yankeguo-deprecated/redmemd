@@ -265,8 +265,10 @@ rxLoop:
 				}
 				continue rxLoop
 			}
-			if err = sendCode(strconv.FormatInt(val, 10)); err != nil {
-				return
+			if !req.Noreply {
+				if err = sendCode(strconv.FormatInt(val, 10)); err != nil {
+					return
+				}
 			}
 		case "decr":
 			val, err1 := client.DecrBy(ctx, calculateRedisKey(req.Key), req.Value).Result()
@@ -278,8 +280,31 @@ rxLoop:
 				}
 				continue rxLoop
 			}
-			if err = sendCode(strconv.FormatInt(val, 10)); err != nil {
-				return
+			if !req.Noreply {
+				if err = sendCode(strconv.FormatInt(val, 10)); err != nil {
+					return
+				}
+			}
+		case "touch":
+			err1 := client.Expire(ctx, calculateRedisKey(req.Key), time.Second*time.Duration(req.Exptime)).Err()
+			if err1 != nil {
+				if err1 == redis.Nil {
+					if !req.Noreply {
+						if err = sendCode(memwire.CodeNotFound); err != nil {
+							return
+						}
+					}
+				} else {
+					if !req.Noreply {
+						if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
+							return
+						}
+					}
+				}
+			} else {
+				if err = sendCode(memwire.CodeTouched); err != nil {
+					return
+				}
 			}
 		case "version":
 			if err = sendCode("VERSION 1"); err != nil {
