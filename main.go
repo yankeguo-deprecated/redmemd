@@ -139,9 +139,9 @@ func handleConn(ctx context.Context, wg *sync.WaitGroup, conn *net.TCPConn) {
 		return
 	}
 
-	sendError := func(msg string) error {
+	sendCode := func(code string) error {
 		return sendResp(&memwire.Response{
-			Response: msg,
+			Response: code,
 		})
 	}
 
@@ -150,7 +150,7 @@ rxLoop:
 		var req *memwire.Request
 		if req, err = memwire.ReadRequest(r); err != nil {
 			if perr, ok := err.(memwire.Error); ok {
-				if err = sendError(memwire.CodeClientErr + perr.Description); err != nil {
+				if err = sendCode(memwire.CodeClientErr + perr.Description); err != nil {
 					return
 				}
 				continue
@@ -159,11 +159,11 @@ rxLoop:
 			}
 		}
 		if ctx.Err() != nil {
-			_ = sendError(memwire.CodeServerErr + "shutting down")
+			_ = sendCode(memwire.CodeServerErr + "shutting down")
 			return
 		}
 		switch req.Command {
-		case "get":
+		case "get", "gets":
 			res := &memwire.Response{}
 			for _, key := range req.Keys {
 				val, err1 := client.Get(ctx, calculateRedisKey(key)).Result()
@@ -171,7 +171,7 @@ rxLoop:
 					if err1 == redis.Nil {
 						continue
 					} else {
-						if err = sendError(memwire.CodeServerErr + err1.Error()); err != nil {
+						if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
 							return
 						}
 						continue rxLoop
@@ -182,7 +182,7 @@ rxLoop:
 					if err2 == redis.Nil {
 						flags = "0"
 					} else {
-						if err = sendError(memwire.CodeServerErr + err1.Error()); err != nil {
+						if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
 							return
 						}
 						continue rxLoop
@@ -198,8 +198,36 @@ rxLoop:
 			if err = sendResp(res); err != nil {
 				return
 			}
+		case "delete":
+			var count int
+			for _, key := range req.Keys {
+				err1 := client.Del(ctx, calculateRedisKey(key)).Err()
+				_ = client.Del(ctx, calculateRedisFlagsKey(key)).Err()
+				if err1 != nil {
+					if err1 == redis.Nil {
+					} else {
+						if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
+							return
+						}
+						continue rxLoop
+					}
+				} else {
+					count++
+				}
+			}
+			if !req.Noreply {
+				if count == 0 {
+					if err = sendCode(memwire.CodeNotFound); err != nil {
+						return
+					}
+				} else {
+					if err = sendCode(memwire.CodeDeleted); err != nil {
+						return
+					}
+				}
+			}
 		default:
-			if err = sendError(memwire.CodeClientErr + req.Command + " not implemented"); err != nil {
+			if err = sendCode(memwire.CodeErr + req.Command + " not implemented"); err != nil {
 				return
 			}
 			continue
