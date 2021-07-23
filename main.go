@@ -21,6 +21,14 @@ var (
 	optRedisPrefix = strings.TrimSpace(os.Getenv("REDIS_PREFIX"))
 )
 
+func calculateRedisKey(key string) string {
+	return optRedisPrefix + key
+}
+
+func calculateRedisFlagsKey(key string) string {
+	return optRedisPrefix + "__FLAGS." + key
+}
+
 func main() {
 	var err error
 	defer func(err *error) {
@@ -118,36 +126,82 @@ func handleConn(ctx context.Context, wg *sync.WaitGroup, conn *net.TCPConn) {
 	go func() {
 		<-ctx.Done()
 		time.Sleep(time.Second)
-		conn.Close()
+		_ = conn.Close()
 	}()
 
+	sendResp := func(res *memwire.Response) (err error) {
+		if _, err = w.WriteString(res.String()); err != nil {
+			return
+		}
+		if err = w.Flush(); err != nil {
+			return
+		}
+		return
+	}
+
+	sendError := func(msg string) error {
+		return sendResp(&memwire.Response{
+			Response: msg,
+		})
+	}
+
+rxLoop:
 	for {
 		var req *memwire.Request
 		if req, err = memwire.ReadRequest(r); err != nil {
 			if perr, ok := err.(memwire.Error); ok {
-				res := &memwire.Response{}
-				res.Response = memwire.CodeClientErr + perr.Description
-				w.WriteString(res.String())
-				w.Flush()
+				if err = sendError(memwire.CodeClientErr + perr.Description); err != nil {
+					return
+				}
 				continue
 			} else {
 				return
 			}
 		}
 		if ctx.Err() != nil {
-			res := &memwire.Response{}
-			res.Response = memwire.CodeServerErr + "shutting down"
-			w.WriteString(res.String())
-			w.Flush()
+			_ = sendError(memwire.CodeServerErr + "shutting down")
 			return
 		}
 		switch req.Command {
-		//TODO: complete
-		default:
+		case "get":
 			res := &memwire.Response{}
-			res.Response = memwire.CodeClientErr + req.Command + " not implemented"
-			w.WriteString(res.String())
-			w.Flush()
+			for _, key := range req.Keys {
+				val, err1 := client.Get(ctx, calculateRedisKey(key)).Result()
+				if err1 != nil {
+					if err1 == redis.Nil {
+						continue
+					} else {
+						if err = sendError(memwire.CodeServerErr + err1.Error()); err != nil {
+							return
+						}
+						continue rxLoop
+					}
+				}
+				flags, err2 := client.Get(ctx, calculateRedisFlagsKey(key)).Result()
+				if err2 != nil {
+					if err2 == redis.Nil {
+						flags = "0"
+					} else {
+						if err = sendError(memwire.CodeServerErr + err1.Error()); err != nil {
+							return
+						}
+						continue rxLoop
+					}
+				}
+				res.Values = append(res.Values, memwire.Value{
+					Key:   key,
+					Flags: flags,
+					Data:  []byte(val),
+				})
+			}
+			res.Response = memwire.CodeEnd
+			if err = sendResp(res); err != nil {
+				return
+			}
+		default:
+			if err = sendError(memwire.CodeClientErr + req.Command + " not implemented"); err != nil {
+				return
+			}
 			continue
 		}
 	}
