@@ -53,10 +53,19 @@ func main() {
 		return
 	}
 
+	log.Println("using addr:", addr.String())
+
 	var listener *net.TCPListener
 	if listener, err = net.ListenTCP("tcp", addr); err != nil {
 		return
 	}
+
+	var redisOptions *redis.Options
+	if redisOptions, err = redis.ParseURL(optRedisURL); err != nil {
+		return
+	}
+
+	log.Println("using redis:", redisOptions.Addr)
 
 	ctx, ctxCancel := context.WithCancel(context.Background())
 

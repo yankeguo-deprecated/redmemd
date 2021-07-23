@@ -6,6 +6,17 @@
 
 * `redis` > 6.0，因为需要 keepttl 功能
 
+## 启动
+
+```shell
+# 设置监听端口
+export PORT=11300
+# 设置 Redis 地址
+export REDIS_URL=redis://127.0.0.1:6379/0
+# 启动
+./redmemed
+```
+
 ## 支持的命令
 
 * `version`
