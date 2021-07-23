@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -153,15 +154,17 @@ rxLoop:
 				if err = sendCode(memwire.CodeClientErr + perr.Description); err != nil {
 					return
 				}
-				continue
+				continue rxLoop
 			} else {
 				return
 			}
 		}
+
 		if ctx.Err() != nil {
 			_ = sendCode(memwire.CodeServerErr + "shutting down")
 			return
 		}
+
 		switch req.Command {
 		case "get", "gets":
 			res := &memwire.Response{}
@@ -235,6 +238,7 @@ rxLoop:
 					if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
 						return
 					}
+					continue rxLoop
 				}
 			}
 			err2 := client.Set(ctx, calculateRedisFlagsKey(req.Key), req.Flags, time.Second*time.Duration(req.Exptime)).Err()
@@ -243,12 +247,39 @@ rxLoop:
 					if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
 						return
 					}
+					continue rxLoop
 				}
 			}
 			if !req.Noreply {
 				if err = sendCode(memwire.CodeStored); err != nil {
 					return
 				}
+			}
+		case "incr":
+			val, err1 := client.IncrBy(ctx, calculateRedisKey(req.Key), req.Value).Result()
+			if err1 != nil {
+				if !req.Noreply {
+					if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
+						return
+					}
+				}
+				continue rxLoop
+			}
+			if err = sendCode(strconv.FormatInt(val, 10)); err != nil {
+				return
+			}
+		case "decr":
+			val, err1 := client.DecrBy(ctx, calculateRedisKey(req.Key), req.Value).Result()
+			if err1 != nil {
+				if !req.Noreply {
+					if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
+						return
+					}
+				}
+				continue rxLoop
+			}
+			if err = sendCode(strconv.FormatInt(val, 10)); err != nil {
+				return
 			}
 		case "version":
 			if err = sendCode("VERSION 1"); err != nil {
