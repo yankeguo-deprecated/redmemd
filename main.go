@@ -206,8 +206,10 @@ rxLoop:
 				if err1 != nil {
 					if err1 == redis.Nil {
 					} else {
-						if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
-							return
+						if !req.Noreply {
+							if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
+								return
+							}
 						}
 						continue rxLoop
 					}
@@ -225,6 +227,32 @@ rxLoop:
 						return
 					}
 				}
+			}
+		case "set":
+			err1 := client.Set(ctx, calculateRedisKey(req.Key), string(req.Data), time.Second*time.Duration(req.Exptime)).Err()
+			if err1 != nil {
+				if !req.Noreply {
+					if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
+						return
+					}
+				}
+			}
+			err2 := client.Set(ctx, calculateRedisFlagsKey(req.Key), req.Flags, time.Second*time.Duration(req.Exptime)).Err()
+			if err2 != nil {
+				if !req.Noreply {
+					if err = sendCode(memwire.CodeServerErr + err1.Error()); err != nil {
+						return
+					}
+				}
+			}
+			if !req.Noreply {
+				if err = sendCode(memwire.CodeStored); err != nil {
+					return
+				}
+			}
+		case "version":
+			if err = sendCode("VERSION 1"); err != nil {
+				return
 			}
 		default:
 			if err = sendCode(memwire.CodeErr + req.Command + " not implemented"); err != nil {
