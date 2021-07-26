@@ -231,6 +231,11 @@ func (rt *RoundTripper) Do(ctx context.Context) error {
 		return rt.ReplyCode(memwire.CodeTouched)
 	case "version":
 		return rt.ReplyCode("VERSION", "1")
+	case "flush_all":
+		if err := rt.Redis.FlushDB(ctx).Err(); err != nil {
+			return rt.ReplyError(err)
+		}
+		return rt.ReplyCode(memwire.CodeOK)
 	case "quit":
 		return io.EOF
 	default:

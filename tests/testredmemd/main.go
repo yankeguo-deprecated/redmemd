@@ -1,10 +1,8 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/go-redis/redis/v8"
 	"log"
 	"os"
 )
@@ -19,9 +17,10 @@ func main() {
 			log.Println("exited")
 		}
 	}(&err)
-	r := redis.NewClient(&redis.Options{Addr: "127.0.0.1:6379"})
-	r.FlushDB(context.Background())
 	mc := memcache.New("127.0.0.1:11211")
+	if err = mc.FlushAll(); err != nil {
+		return
+	}
 	if err = mc.Set(&memcache.Item{Key: "hello", Value: []byte("world")}); err != nil {
 		return
 	}

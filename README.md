@@ -26,10 +26,11 @@ export REDIS_URL=redis://127.0.0.1:6379/0
 ## 支持的命令
 
 * `version`
-* `get`
+* `get`, `gets`
 * `set`, `cas`, `add`, `replace`
 * `append`, `prepend`, `incr`, `decr`
 * `delete`, `touch`
+* `flush_all`, `quit`
 
 其中
 
