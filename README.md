@@ -8,6 +8,8 @@
 
 ## 启动
 
+**命令行启动**
+
 ```shell
 # 设置监听端口
 export PORT=11211
@@ -16,6 +18,10 @@ export REDIS_URL=redis://127.0.0.1:6379/0
 # 启动
 ./redmemed
 ```
+
+**使用容器**
+
+`guoyk/redmemd`
 
 ## 支持的命令
 

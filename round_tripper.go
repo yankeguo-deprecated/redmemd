@@ -92,10 +92,13 @@ func (rt *RoundTripper) Do(ctx context.Context) error {
 	case "set", "cas", "add", "replace":
 		if err := rt.WithLock(ctx, rt.Key, func(ctx context.Context) error {
 			var err error
-			if rt.Command == "cas" || rt.Command == "add" || rt.Command == "replace" {
+			switch rt.Command {
+			case "cas", "add", "replace":
 				var val map[string]string
 				if val, err = rt.Redis.HGetAll(ctx, rt.Key).Result(); err != nil {
-					if err == redis.Nil {
+					return err
+				} else {
+					if len(val) == 0 {
 						switch rt.Command {
 						case "cas":
 							return err
@@ -105,18 +108,16 @@ func (rt *RoundTripper) Do(ctx context.Context) error {
 							return ErrNotStored
 						}
 					} else {
-						return err
-					}
-				} else {
-					switch rt.Command {
-					case "cas":
-						if val[KeyToken] != rt.Cas {
-							return ErrExists
+						switch rt.Command {
+						case "cas":
+							if val[KeyToken] != rt.Cas {
+								return ErrExists
+							}
+						case "add":
+							return ErrNotStored
+						case "replace":
+							// no-op
 						}
-					case "add":
-						return ErrNotStored
-					case "replace":
-						// no-op
 					}
 				}
 			}
