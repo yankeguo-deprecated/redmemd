@@ -33,7 +33,7 @@ export REDIS_URL=redis://127.0.0.1:6379/0
 
 其中
 
-* 所有命令支持 `flags` 存取
+* 所有命令支持 `flags`, `cas token`, `exptime`, `noreply` 特性
 * 所有命令支持原子化操作
 
 ## 致谢
